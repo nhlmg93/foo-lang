@@ -1,7 +1,6 @@
 package lexer
 
 import (
-	"fmt"
 	"foo_lang/token"
 	"unicode/utf8"
 )
