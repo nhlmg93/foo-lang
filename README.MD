@@ -5,8 +5,5 @@ Foo-lang is a project dedicated to exploring the intricacies of creating an inte
 Lexical Analysis: Tokenizing the input code to generate a sequence of tokens.
 Parser: Analyzing the token sequence to construct an abstract syntax tree (AST).
 
-# Technology Used
-Golang: The entire project is implemented using Go, leveraging its performance and concurrency capabilities to build efficient language processing components.
-
 # Purpose
 The primary goal of Foo-lang is educational, offering insights into the process and challenges of language design and implementation. By working through this project, contributors and learners can gain hands-on experience with lexical analysis, parsing techniques, and the overall structure of an interpreter.
