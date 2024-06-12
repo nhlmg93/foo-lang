@@ -1,4 +1,4 @@
-# About Foo-lang
+# About FOOlang
 Foo-lang is a project dedicated to exploring the intricacies of creating an interpreted programming language from scratch. This project aims to provide a deeper understanding of the fundamental components involved in building an interpreted language without relying on external packages or libraries.
 
 # Key Features
