@@ -3,6 +3,7 @@ Foo-lang is a project dedicated to exploring the intricacies of creating an inte
 
 # Key Features
 Lexical Analysis: Tokenizing the input code to generate a sequence of tokens.
+
 Parser: Analyzing the token sequence to construct an abstract syntax tree (AST).
 
 # Purpose
