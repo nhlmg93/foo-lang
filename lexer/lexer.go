@@ -5,23 +5,22 @@ import (
 	"unicode/utf8"
 )
 
-type Lexar struct {
+type Lexer struct {
 	input        string
 	position     int
 	readPosition int
 	ch           rune
 }
 
-
-func New(input string) *Lexar {
-	l := &Lexar{input: input}
+func New(input string) *Lexer {
+	l := &Lexer{input: input}
 
 	l.readRune()
 
 	return l
 }
 
-func (l *Lexar) readRune() {
+func (l *Lexer) readRune() {
 	var width int
 	if l.readPosition >= len(l.input) {
 		l.ch = 0
@@ -33,8 +32,9 @@ func (l *Lexar) readRune() {
 	l.readPosition += width
 }
 
-func (l *Lexar) NextToken() token.Token {
+func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
+	l.skipWhitespace()
 	switch l.ch {
 	case '=':
 		tok = newToken(token.ASSIGN, l.ch)
@@ -61,6 +61,10 @@ func (l *Lexar) NextToken() token.Token {
 			tok.Type = token.LookupIdent(tok.Literal)
 			return tok
 
+		} else if isDigit(l.ch) {
+			tok.Type = token.INT
+			tok.Literal = l.readNumber()
+			return tok
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
 		}
@@ -69,15 +73,32 @@ func (l *Lexar) NextToken() token.Token {
 	return tok
 }
 
-func (l *Lexar) readIdentifier() string {
+func (l *Lexer) readNumber() string {
+	position := l.position
+	for isDigit(l.ch) {
+		l.readRune()
+	}
+	return l.input[position:l.position]
+
+}
+func (l *Lexer) readIdentifier() string {
 	position := l.position
 	for isLetter(l.ch) {
 		l.readRune()
 	}
 	return l.input[position:l.position]
 }
+func (l *Lexer) skipWhitespace() {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		l.readRune()
+	}
+
+}
 func isLetter(ch rune) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+func isDigit(ch rune) bool {
+	return '0' <= ch && ch <= '9'
 }
 func newToken(tokenType token.TokenType, ch rune) token.Token {
 	return token.Token{Type: tokenType, Literal: string(ch)}
