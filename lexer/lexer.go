@@ -37,7 +37,14 @@ func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()
 	switch l.ch {
 	case '=':
-		tok = newToken(token.ASSIGN, l.ch)
+		if l.peekRune() == '=' {
+			ch := l.ch
+			l.readRune()
+			literal := string(ch) + string(l.ch)
+			tok = token.Token{Type: token.EQ, Literal: literal}
+		} else {
+			tok = newToken(token.ASSIGN, l.ch)
+		}
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch)
 	case '(':
@@ -63,7 +70,14 @@ func (l *Lexer) NextToken() token.Token {
 	case '<':
 		tok = newToken(token.LT, l.ch)
 	case '!':
-		tok = newToken(token.BANG, l.ch)
+		if l.peekRune() == '=' {
+			ch := l.ch
+			l.readRune()
+			literal := string(ch) + string(l.ch)
+			tok = token.Token{Type: token.NOT_EQ, Literal: literal}
+		} else {
+			tok = newToken(token.BANG, l.ch)
+		}
 	case 0:
 		tok.Literal = ""
 		tok.Type = token.EOF
@@ -104,6 +118,16 @@ func (l *Lexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
 		l.readRune()
 	}
+}
+func (l *Lexer) peekRune() rune {
+	if l.readPosition >= len(l.input) {
+		return 0
+	} else {
+		inputSlice := l.input[l.readPosition:]
+		r, _ := utf8.DecodeRuneInString(inputSlice)
+		return r
+	}
+
 }
 func isLetter(ch rune) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
