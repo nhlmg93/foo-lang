@@ -5,6 +5,7 @@ import (
 	"foo_lang/ast"
 	"foo_lang/lexer"
 	"foo_lang/token"
+	"strconv"
 )
 
 type (
@@ -43,6 +44,7 @@ func New(l *lexer.Lexer) *Parser {
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
+	p.registerPrefix(token.INT, p.parseIntegerLiter)
 
 	// Read two tokens, so curToken and peekToken are set
 	p.nextToken()
@@ -161,6 +163,20 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 		p.peekError(t)
 		return false
 	}
+}
+
+func (p *Parser) parseIntegerLiter() ast.Expression {
+	lit := &ast.IntegerLiteral{Token: p.curToken}
+
+	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as integer", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+	}
+
+	lit.Value = value
+
+	return lit
 }
 
 func (p *Parser) registerPrefix(tokenType token.TokenType, fn prefixParseFn) {
