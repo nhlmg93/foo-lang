@@ -2,7 +2,7 @@
 
 An interpreter for the **foo** programming language, written in C.
 
-This project is an implementation of the Monkey programming language interpreter from the book ["Writing An Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball. Instead of Go, we're using C.
+This project is an implementation of the **foo** programming language interpreter following the book ["Writing An Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball. Instead of Go, we're using C.
 
 ## Building
 
