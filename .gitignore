@@ -1,5 +1,6 @@
 # Compiled binaries
 foo
+test_lexer
 *.exe
 *.out
 
@@ -23,6 +24,9 @@ tmp/
 *.swp
 *.swo
 *~
+
+# Cache
+.cache/
 
 # Debug files
 *.dSYM/
