@@ -1,6 +1,4 @@
 # Compiled binaries
-foo
-test_lexer
 *.exe
 *.out
 
