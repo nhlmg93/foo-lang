@@ -50,7 +50,7 @@ static const char *const TOKEN_STRINGS[] = {
 #undef X
 };
 
-static inline const char *token_type_to_str(TokenType t) {
+const char *token_type_to_str(TokenType t) {
   return TOKEN_STRINGS[t];
 }
 
@@ -79,7 +79,7 @@ typedef struct Interpreter {
 static size_t arena_offset = 0;
 static unsigned char arena_buf[1 * MB];
 
-static inline unsigned char *align(unsigned char *p, size_t alignment) {
+unsigned char *align(unsigned char *p, size_t alignment) {
   uintptr_t addr = (uintptr_t)p;
   return (unsigned char *)((addr + (alignment - 1)) &
                            ~(uintptr_t)(alignment - 1));
@@ -94,7 +94,7 @@ void *arena_alloc(size_t size) {
 }
 
 // Allocate and copy a string of exactly `len` characters (+ null terminator)
-static inline char *arena_strndup(const char *src, size_t len) {
+char *arena_strndup(const char *src, size_t len) {
   char *dst = arena_alloc(len + 1);
   memcpy(dst, src, len);
   dst[len] = '\0';
@@ -105,7 +105,7 @@ static inline char *arena_strndup(const char *src, size_t len) {
  * ----------------------------------------------------------------------------
  */
 
-static uint32_t hash_string(const char *str) {
+uint32_t hash_string(const char *str) {
   uint32_t hash = 5381;
   int c;
   while ((c = *str++)) {
