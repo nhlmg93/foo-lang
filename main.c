@@ -10,30 +10,32 @@
 #include <string.h>
 
 #define TOKEN_TABLE                                                            \
-  X(ILLEGAL, "ILLEGAL")                                                    \
-  X(END, "EOF")                                                            \
-  X(IDENT, "IDENT")                                                        \
-  X(INT, "INT")                                                            \
-  X(ASSIGN, "=")                                                           \
-  X(PLUS, "+")                                                             \
-  X(MINUS, "-")                                                           \
-  X(BANG, "!")                                                            \
-  X(ASTERISK, "*")                                                        \
-  X(SLASH, "/")                                                           \
-  X(LT, "<")                                                              \
-  X(GT, ">")                                                              \
-  X(COMMA, ",")                                                            \
-  X(SEMICOLON, ";")                                                        \
-  X(LPAREN, "(")                                                           \
-  X(RPAREN, ")")                                                           \
-  X(LBRACE, "{")                                                           \
-  X(RBRACE, "}")                                                           \
-  X(FUNCTION, "FUNCTION")                                                  \
-  X(LET, "LET")                                                            \
-  X(TRUE, "TRUE")                                                          \
-  X(FALSE, "FALSE")                                                        \
-  X(IF, "IF")                                                              \
-  X(ELSE, "ELSE")                                                          \
+  X(ILLEGAL, "ILLEGAL")                                                        \
+  X(END, "EOF")                                                                \
+  X(IDENT, "IDENT")                                                            \
+  X(INT, "INT")                                                                \
+  X(ASSIGN, "=")                                                               \
+  X(EQUAL, "==")                                                               \
+  X(NOT_EQUAL, "!=")                                                           \
+  X(PLUS, "+")                                                                 \
+  X(MINUS, "-")                                                                \
+  X(BANG, "!")                                                                 \
+  X(ASTERISK, "*")                                                             \
+  X(SLASH, "/")                                                                \
+  X(LT, "<")                                                                   \
+  X(GT, ">")                                                                   \
+  X(COMMA, ",")                                                                \
+  X(SEMICOLON, ";")                                                            \
+  X(LPAREN, "(")                                                               \
+  X(RPAREN, ")")                                                               \
+  X(LBRACE, "{")                                                               \
+  X(RBRACE, "}")                                                               \
+  X(FUNCTION, "FUNCTION")                                                      \
+  X(LET, "LET")                                                                \
+  X(TRUE, "TRUE")                                                              \
+  X(FALSE, "FALSE")                                                            \
+  X(IF, "IF")                                                                  \
+  X(ELSE, "ELSE")                                                              \
   X(RETURN, "RETURN")
 
 typedef enum : uint8_t {
@@ -64,11 +66,13 @@ typedef struct Interpreter {
 
 /* ============================================================================
  * UTILS
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /* ----------------------------------------------------------------------------
  * Arena Allocator
- * ---------------------------------------------------------------------------- */
+ * ----------------------------------------------------------------------------
+ */
 
 #define MB (1024 * 1024)
 #define MAX_TOKENS 1024
@@ -89,9 +93,17 @@ void *arena_alloc(size_t size) {
   return p;
 }
 
+// Allocate and copy a string of exactly `len` characters (+ null terminator)
+static inline char *arena_strndup(const char *src, size_t len) {
+  char *dst = arena_alloc(len + 1);
+  memcpy(dst, src, len);
+  dst[len] = '\0';
+  return dst;
+}
 /* ----------------------------------------------------------------------------
  * Hash Table
- * ---------------------------------------------------------------------------- */
+ * ----------------------------------------------------------------------------
+ */
 
 static uint32_t hash_string(const char *str) {
   uint32_t hash = 5381;
@@ -155,7 +167,8 @@ TokenType kw_get(KeywordMap *kw, const char *key) {
 
 /* ----------------------------------------------------------------------------
  * Debug
- * ---------------------------------------------------------------------------- */
+ * ----------------------------------------------------------------------------
+ */
 
 __attribute__((format(printf, 1, 2))) void debug(const char *fmt, ...) {
   va_list args;
@@ -170,7 +183,8 @@ __attribute__((format(printf, 1, 2))) void debug(const char *fmt, ...) {
 
 /* ============================================================================
  * UTILS END
- * ============================================================================ */
+ * ============================================================================
+ */
 
 int read_ident(Interpreter *intpr, KeywordMap *keywords, const char *input,
                int pos) {
@@ -180,10 +194,7 @@ int read_ident(Interpreter *intpr, KeywordMap *keywords, const char *input,
   int len = pos - start;
 
   Token *tok = &intpr->token_buf[intpr->token_count];
-  tok->v = arena_alloc(len + 1);
-  memcpy(tok->v, &input[start], len);
-  tok->v[len] = '\0';
-
+  tok->v = arena_strndup(&input[start], len);
   tok->type = kw_get(keywords, tok->v);
   return --pos;
 }
@@ -195,11 +206,16 @@ int read_number(Interpreter *intpr, const char *input, int pos) {
   int len = pos - start;
 
   Token *tok = &intpr->token_buf[intpr->token_count];
-  tok->v = arena_alloc(len + 1);
-  memcpy(tok->v, &input[start], len);
-  tok->v[len] = '\0';
+  tok->v = arena_strndup(&input[start], len);
   tok->type = INT;
   return --pos;
+}
+
+char peek_char(const char *input, int pos) {
+  if ((size_t)(pos + 1) >= strlen(input))
+    return '\0';
+  else
+    return input[pos + 1];
 }
 
 int main() {
@@ -217,6 +233,9 @@ if (5 < 10) {
 } else {
     return false;
 }
+
+10 == 10;
+10 != 9;
 )";
 
   KeywordMap *keywords = kw_new(16);
@@ -237,53 +256,75 @@ if (5 < 10) {
       continue;
 
     assert(intpr.token_count < MAX_TOKENS);
-  Token *tok = &intpr.token_buf[intpr.token_count];
-
-    tok->v = arena_alloc(2);
-    tok->v[0] = ch;
-    tok->v[1] = '\0';
+    Token *tok = &intpr.token_buf[intpr.token_count];
 
     switch (ch) {
     case '+':
+      tok->v = arena_strndup("+", 1);
       tok->type = PLUS;
       break;
     case '=':
-      tok->type = ASSIGN;
+      if (peek_char(input, i) == '=') {
+        i++;
+        tok->v = arena_strndup("==", 2);
+        tok->type = EQUAL;
+      } else {
+        tok->v = arena_strndup("=", 1);
+        tok->type = ASSIGN;
+      }
       break;
     case ';':
+      tok->v = arena_strndup(";", 1);
       tok->type = SEMICOLON;
       break;
     case '{':
+      tok->v = arena_strndup("{", 1);
       tok->type = LBRACE;
       break;
     case '}':
+      tok->v = arena_strndup("}", 1);
       tok->type = RBRACE;
       break;
     case '(':
+      tok->v = arena_strndup("(", 1);
       tok->type = LPAREN;
       break;
     case ')':
+      tok->v = arena_strndup(")", 1);
       tok->type = RPAREN;
       break;
     case ',':
+      tok->v = arena_strndup(",", 1);
       tok->type = COMMA;
       break;
     case '-':
+      tok->v = arena_strndup("-", 1);
       tok->type = MINUS;
       break;
     case '!':
-      tok->type = BANG;
+      if (peek_char(input, i) == '=') {
+        i++;
+        tok->v = arena_strndup("!=", 2);
+        tok->type = NOT_EQUAL;
+      } else {
+        tok->v = arena_strndup("!", 1);
+        tok->type = BANG;
+      }
       break;
     case '/':
+      tok->v = arena_strndup("/", 1);
       tok->type = SLASH;
       break;
     case '*':
+      tok->v = arena_strndup("*", 1);
       tok->type = ASTERISK;
       break;
     case '<':
+      tok->v = arena_strndup("<", 1);
       tok->type = LT;
       break;
     case '>':
+      tok->v = arena_strndup(">", 1);
       tok->type = GT;
       break;
     default:
@@ -292,6 +333,7 @@ if (5 < 10) {
       } else if (isdigit(ch)) {
         i = read_number(&intpr, input, i);
       } else {
+        tok->v = arena_strndup(&ch, 1);
         tok->type = ILLEGAL;
       }
       break;
