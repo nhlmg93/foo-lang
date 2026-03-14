@@ -31,3 +31,5 @@ tmp/
 *.su
 *.idb
 *.pdb
+
+AGENTS.md
