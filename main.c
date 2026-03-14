@@ -56,9 +56,54 @@ typedef struct Token {
   const char *v;
 } Token;
 
+typedef struct Expr Expr; // Forward declaration
+
+typedef enum {
+  STMT_LET,
+  STMT_RETURN,
+  STMT_EXPR,
+} StmtType;
+
+typedef struct Stmt {
+  StmtType type;
+  union {
+    struct {
+      const char *name;
+      Expr *value;
+    } let; // let x = 5;
+    struct {
+      Expr *value;
+    } ret; // return 5;
+    struct {
+      Expr *expr;
+    } expr_stmt; // 5 + 5;
+  } data;
+} Stmt;
+
+typedef struct Program {
+  Stmt *stmts;
+  int count;
+} Program;
+
+// Minimal expression (placeholder)
+struct Expr {
+  int placeholder;
+};
+
+// Flat Interpreter struct (everything in one place)
 typedef struct Interpreter {
+  // Tokenizer
   Token *token_buf;
   int token_count;
+
+  // Parser
+  int pos;
+  Token curr;
+  Token next;
+
+  // Program
+  Stmt *stmts;
+  int stmt_count;
 } Interpreter;
 
 /* ============================================================================
@@ -80,6 +125,7 @@ void print_usage(const char *prog) {
 #define MB (1024 * 1024)
 #define ARENA_SIZE (1 * MB)
 #define MAX_TOKENS (32 * 1024) // 32k tokens ~512KB
+#define MAX_STMTS (4 * 1024) // 4k statements
 
 static size_t arena_offset = 0;
 static unsigned char arena_buf[ARENA_SIZE];
