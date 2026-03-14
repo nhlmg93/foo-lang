@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -50,13 +49,11 @@ static const char *const TOKEN_STRINGS[] = {
 #undef X
 };
 
-const char *token_type_to_str(TokenType t) {
-  return TOKEN_STRINGS[t];
-}
+const char *token_type_to_str(TokenType t) { return TOKEN_STRINGS[t]; }
 
 typedef struct Token {
   TokenType type;
-  char *v;
+  const char *v;
 } Token;
 
 typedef struct Interpreter {
@@ -69,37 +66,38 @@ typedef struct Interpreter {
  * ============================================================================
  */
 
+void print_usage(const char *prog) {
+  fprintf(stderr, "usage: %s [file | repl]\n", prog);
+  fprintf(stderr, "  file    tokenize the specified file\n");
+  fprintf(stderr, "  repl    start interactive read-eval-print loop\n");
+}
+
 /* ----------------------------------------------------------------------------
- * Arena Allocator
+ * Arena Allocator - just one permanent region
  * ----------------------------------------------------------------------------
  */
 
 #define MB (1024 * 1024)
 #define MAX_TOKENS 1024
-static size_t arena_offset = 0;
-static unsigned char arena_buf[1 * MB];
+#define ARENA_SIZE (1 * MB)
 
-unsigned char *align(unsigned char *p, size_t alignment) {
+static size_t arena_offset = 0;
+static unsigned char arena_buf[ARENA_SIZE];
+
+unsigned char *align_ptr(unsigned char *p, size_t alignment) {
   uintptr_t addr = (uintptr_t)p;
   return (unsigned char *)((addr + (alignment - 1)) &
                            ~(uintptr_t)(alignment - 1));
 }
 
 void *arena_alloc(size_t size) {
-  unsigned char *p = align(&arena_buf[arena_offset], sizeof(void *));
+  unsigned char *p = align_ptr(&arena_buf[arena_offset], sizeof(void *));
   size_t new_offset = (size_t)(p - arena_buf) + size;
-  assert(new_offset <= sizeof(arena_buf));
+  assert(new_offset <= ARENA_SIZE);
   arena_offset = new_offset;
   return p;
 }
 
-// Allocate and copy a string of exactly `len` characters (+ null terminator)
-char *arena_strndup(const char *src, size_t len) {
-  char *dst = arena_alloc(len + 1);
-  memcpy(dst, src, len);
-  dst[len] = '\0';
-  return dst;
-}
 /* ----------------------------------------------------------------------------
  * Hash Table
  * ----------------------------------------------------------------------------
@@ -170,15 +168,18 @@ TokenType kw_get(KeywordMap *kw, const char *key) {
  * ----------------------------------------------------------------------------
  */
 
-__attribute__((format(printf, 1, 2))) void debug(const char *fmt, ...) {
+#if defined(__GNUC__) || defined(__clang__)
+#define FORMAT_PRINTF(fmt_idx, arg_idx)                                        \
+  __attribute__((format(printf, fmt_idx, arg_idx)))
+#else
+#define FORMAT_PRINTF(fmt_idx, arg_idx)
+#endif
+
+FORMAT_PRINTF(1, 2) void debug(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  char *tmp;
-  if (vasprintf(&tmp, fmt, args) < 0)
-    return;
+  vfprintf(stdout, fmt, args);
   va_end(args);
-  printf("%s", tmp);
-  free(tmp);
 }
 
 /* ============================================================================
@@ -186,58 +187,168 @@ __attribute__((format(printf, 1, 2))) void debug(const char *fmt, ...) {
  * ============================================================================
  */
 
-int read_ident(Interpreter *intpr, KeywordMap *keywords, const char *input,
-               int pos) {
+// Read identifier starting at pos, null-terminate it in place, return position
+// of last char processed. Sets tok->v to point into input buffer.
+int read_ident(Interpreter *intpr, KeywordMap *keywords, char *input, int pos) {
   int start = pos++;
   while (isalpha(input[pos]))
     pos++;
-  int len = pos - start;
+
+  // Null-terminate the identifier in place (destructive tokenization)
+  input[pos] = '\0';
 
   Token *tok = &intpr->token_buf[intpr->token_count];
-  tok->v = arena_strndup(&input[start], len);
+  tok->v = &input[start];
   tok->type = kw_get(keywords, tok->v);
-  return --pos;
+
+  return pos;
 }
 
-int read_number(Interpreter *intpr, const char *input, int pos) {
+int read_number(Interpreter *intpr, char *input, int pos) {
   int start = pos;
   while (isdigit(input[pos]))
     pos++;
-  int len = pos - start;
+
+  // Null-terminate the number in place (destructive tokenization)
+  input[pos] = '\0';
 
   Token *tok = &intpr->token_buf[intpr->token_count];
-  tok->v = arena_strndup(&input[start], len);
+  tok->v = &input[start];
   tok->type = INT;
-  return --pos;
+
+  return pos;
 }
 
 char peek_char(const char *input, int pos) {
-  if ((size_t)(pos + 1) >= strlen(input))
-    return '\0';
-  else
-    return input[pos + 1];
+  return input[pos + 1]; // Returns '\0' if past end (null terminator)
 }
 
-int main() {
-  const char *input = R"(
-let five = 5;
-let ten = 10;
-let add = fn(x, y) {
-    x + y;
-};
-let result = add(five, ten);
-!-/*5;
-5 < 10 > 5;
-if (5 < 10) {
-    return true;
-} else {
-    return false;
+void tokenize(Interpreter *intpr, KeywordMap *keywords, char *input) {
+  for (int i = 0; input[i] != '\0'; i++) {
+    char ch = input[i];
+    if (isspace(ch))
+      continue;
+
+    assert(intpr->token_count < MAX_TOKENS);
+    Token *tok = &intpr->token_buf[intpr->token_count];
+
+    switch (ch) {
+    case '+':
+      tok->v = "+";
+      tok->type = PLUS;
+      break;
+    case '=':
+      if (peek_char(input, i) == '=') {
+        i++;
+        tok->v = "==";
+        tok->type = EQUAL;
+      } else {
+        tok->v = "=";
+        tok->type = ASSIGN;
+      }
+      break;
+    case ';':
+      tok->v = ";";
+      tok->type = SEMICOLON;
+      break;
+    case '{':
+      tok->v = "{";
+      tok->type = LBRACE;
+      break;
+    case '}':
+      tok->v = "}";
+      tok->type = RBRACE;
+      break;
+    case '(':
+      tok->v = "(";
+      tok->type = LPAREN;
+      break;
+    case ')':
+      tok->v = ")";
+      tok->type = RPAREN;
+      break;
+    case ',':
+      tok->v = ",";
+      tok->type = COMMA;
+      break;
+    case '-':
+      tok->v = "-";
+      tok->type = MINUS;
+      break;
+    case '!':
+      if (peek_char(input, i) == '=') {
+        i++;
+        tok->v = "!=";
+        tok->type = NOT_EQUAL;
+      } else {
+        tok->v = "!";
+        tok->type = BANG;
+      }
+      break;
+    case '/':
+      tok->v = "/";
+      tok->type = SLASH;
+      break;
+    case '*':
+      tok->v = "*";
+      tok->type = ASTERISK;
+      break;
+    case '<':
+      tok->v = "<";
+      tok->type = LT;
+      break;
+    case '>':
+      tok->v = ">";
+      tok->type = GT;
+      break;
+    default:
+      if (isalpha(ch)) {
+        i = read_ident(intpr, keywords, input, i);
+      } else if (isdigit(ch)) {
+        i = read_number(intpr, input, i);
+      } else {
+        // For illegal tokens, just point to the char itself
+        static char illegal_buf[2]; // Not thread-safe, but simple
+        illegal_buf[0] = ch;
+        illegal_buf[1] = '\0';
+        tok->v = illegal_buf;
+        tok->type = ILLEGAL;
+      }
+      break;
+    }
+
+    debug("token_type= \"%s\" token= \"%s\"\n", token_type_to_str(tok->type),
+          tok->v);
+    intpr->token_count++;
+  }
 }
 
-10 == 10;
-10 != 9;
-)";
+char *read_file(const char *path) {
+  FILE *f = fopen(path, "r");
+  if (!f) {
+    fprintf(stderr, "error: could not open file: %s\n", path);
+    return NULL;
+  }
 
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  if (size < 0) {
+    fclose(f);
+    fprintf(stderr, "error: could not determine file size: %s\n", path);
+    return NULL;
+  }
+
+  char *buf = arena_alloc((size_t)size + 1);
+  size_t read = fread(buf, 1, (size_t)size, f);
+  buf[read] = '\0';
+  fclose(f);
+
+  return buf;
+}
+
+int main(int argc, char *argv[]) {
   KeywordMap *keywords = kw_new(16);
   kw_insert(keywords, "fn", FUNCTION);
   kw_insert(keywords, "let", LET);
@@ -247,102 +358,54 @@ if (5 < 10) {
   kw_insert(keywords, "else", ELSE);
   kw_insert(keywords, "return", RETURN);
 
-  Interpreter intpr = {0};
-  intpr.token_buf = arena_alloc(MAX_TOKENS * sizeof(Token));
-
-  for (int i = 0; input[i] != '\0'; i++) {
-    char ch = input[i];
-    if (isspace(ch))
-      continue;
-
-    assert(intpr.token_count < MAX_TOKENS);
-    Token *tok = &intpr.token_buf[intpr.token_count];
-
-    switch (ch) {
-    case '+':
-      tok->v = arena_strndup("+", 1);
-      tok->type = PLUS;
-      break;
-    case '=':
-      if (peek_char(input, i) == '=') {
-        i++;
-        tok->v = arena_strndup("==", 2);
-        tok->type = EQUAL;
-      } else {
-        tok->v = arena_strndup("=", 1);
-        tok->type = ASSIGN;
-      }
-      break;
-    case ';':
-      tok->v = arena_strndup(";", 1);
-      tok->type = SEMICOLON;
-      break;
-    case '{':
-      tok->v = arena_strndup("{", 1);
-      tok->type = LBRACE;
-      break;
-    case '}':
-      tok->v = arena_strndup("}", 1);
-      tok->type = RBRACE;
-      break;
-    case '(':
-      tok->v = arena_strndup("(", 1);
-      tok->type = LPAREN;
-      break;
-    case ')':
-      tok->v = arena_strndup(")", 1);
-      tok->type = RPAREN;
-      break;
-    case ',':
-      tok->v = arena_strndup(",", 1);
-      tok->type = COMMA;
-      break;
-    case '-':
-      tok->v = arena_strndup("-", 1);
-      tok->type = MINUS;
-      break;
-    case '!':
-      if (peek_char(input, i) == '=') {
-        i++;
-        tok->v = arena_strndup("!=", 2);
-        tok->type = NOT_EQUAL;
-      } else {
-        tok->v = arena_strndup("!", 1);
-        tok->type = BANG;
-      }
-      break;
-    case '/':
-      tok->v = arena_strndup("/", 1);
-      tok->type = SLASH;
-      break;
-    case '*':
-      tok->v = arena_strndup("*", 1);
-      tok->type = ASTERISK;
-      break;
-    case '<':
-      tok->v = arena_strndup("<", 1);
-      tok->type = LT;
-      break;
-    case '>':
-      tok->v = arena_strndup(">", 1);
-      tok->type = GT;
-      break;
-    default:
-      if (isalpha(ch)) {
-        i = read_ident(&intpr, keywords, input, i);
-      } else if (isdigit(ch)) {
-        i = read_number(&intpr, input, i);
-      } else {
-        tok->v = arena_strndup(&ch, 1);
-        tok->type = ILLEGAL;
-      }
-      break;
-    }
-
-    debug("token_type= \"%s\" token= \"%s\"\n", token_type_to_str(tok->type),
-          tok->v);
-    intpr.token_count++;
+  if (argc > 2) {
+    fprintf(stderr, "error: too many arguments\n");
+    print_usage(argv[0]);
+    return EXIT_FAILURE;
   }
+
+  if (argc == 1) {
+    fprintf(stderr, "error: no input file specified\n");
+    print_usage(argv[0]);
+    return EXIT_FAILURE;
+  }
+
+  if (strcmp(argv[1], "repl") == 0) {
+    char line[1024];
+    Token tokens[MAX_TOKENS];
+    Interpreter intpr = {.token_buf = tokens, .token_count = 0};
+
+    printf(">>> ");
+    while (fgets(line, sizeof(line), stdin) != NULL) {
+      size_t temp_base = arena_offset;
+      intpr.token_count = 0;
+
+      size_t len = strlen(line);
+      if (len > 0 && line[len - 1] == '\n') {
+        line[len - 1] = '\0';
+      }
+
+      tokenize(&intpr, keywords, line);
+
+      printf(">>> ");
+    }
+    return EXIT_SUCCESS;
+  }
+
+  if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+    print_usage(argv[0]);
+    return EXIT_SUCCESS;
+  }
+
+  // File mode - file buffer from arena, tokens on stack
+  char *source = read_file(argv[1]);
+  if (!source) {
+    return EXIT_FAILURE;
+  }
+
+  Token tokens[MAX_TOKENS];
+  Interpreter intpr = {.token_buf = tokens, .token_count = 0};
+  tokenize(&intpr, keywords, source);
 
   return EXIT_SUCCESS;
 }
