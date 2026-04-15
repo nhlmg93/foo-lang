@@ -1,6 +1,7 @@
 # Compiled binaries
 *.exe
 *.out
+foo
 
 # Object files
 *.o
@@ -33,3 +34,4 @@ tmp/
 *.pdb
 
 AGENTS.md
+vendor/

@@ -1,5 +1,7 @@
+#define ARENA_IMPLEMENTATION
 #include <assert.h>
 #include <ctype.h>
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -7,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "vendor/arena.h"
 
 #define TOKEN_TABLE                                                            \
   X(ILLEGAL, "ILLEGAL")                                                        \
@@ -122,27 +126,10 @@ void print_usage(const char *prog) {
  * ----------------------------------------------------------------------------
  */
 
-#define MB (1024 * 1024)
-#define ARENA_SIZE (1 * MB)
 #define MAX_TOKENS (32 * 1024) // 32k tokens ~512KB
-#define MAX_STMTS (4 * 1024) // 4k statements
+#define MAX_STMTS (4 * 1024)   // 4k statements
 
-static size_t arena_offset = 0;
-static unsigned char arena_buf[ARENA_SIZE];
-
-unsigned char *align_ptr(unsigned char *p, size_t alignment) {
-  uintptr_t addr = (uintptr_t)p;
-  return (unsigned char *)((addr + (alignment - 1)) &
-                           ~(uintptr_t)(alignment - 1));
-}
-
-void *arena_alloc(size_t size) {
-  unsigned char *p = align_ptr(&arena_buf[arena_offset], sizeof(void *));
-  size_t new_offset = (size_t)(p - arena_buf) + size;
-  assert(new_offset <= ARENA_SIZE && "arena out of memory");
-  arena_offset = new_offset;
-  return p;
-}
+static Arena arena;
 
 /* ----------------------------------------------------------------------------
  * Keywords
@@ -192,7 +179,7 @@ FORMAT_PRINTF(1, 2) void debug(const char *fmt, ...) {
  * ============================================================================
  */
 
-Token *push_token(Interpreter *intpr) {
+static Token *new_token(Interpreter *intpr) {
   assert(intpr->token_count < MAX_TOKENS && "too many tokens");
   return &intpr->token_buf[intpr->token_count++];
 }
@@ -203,11 +190,12 @@ int read_ident(Interpreter *intpr, char *input, int pos) {
     pos++;
 
   int len = pos - start;
-  char *ident = arena_alloc(len + 1);
+  char *ident = arena_alloc(&arena, len + 1, 1);
+  assert(ident && "out of memory");
   memcpy(ident, &input[start], len);
   ident[len] = '\0';
 
-  Token *tok = push_token(intpr);
+  Token *tok = new_token(intpr);
   tok->v = ident;
   tok->type = keyword_lookup(tok->v);
 
@@ -220,15 +208,23 @@ int read_number(Interpreter *intpr, char *input, int pos) {
     pos++;
 
   int len = pos - start;
-  char *num = arena_alloc(len + 1);
+  char *num = arena_alloc(&arena, len + 1, 1);
+  assert(num && "out of memory");
   memcpy(num, &input[start], len);
   num[len] = '\0';
 
-  Token *tok = push_token(intpr);
+  Token *tok = new_token(intpr);
   tok->v = num;
   tok->type = INT;
 
   return pos - 1;
+}
+
+static Token *push_token(Interpreter *intpr, TokenType type) {
+  Token *tok = new_token(intpr);
+  tok->type = type;
+  tok->v = TOKEN_STRINGS[type];
+  return tok;
 }
 
 char peek_char(const char *input, int pos) { return input[pos + 1]; }
@@ -248,86 +244,56 @@ void tokenize(Interpreter *intpr, char *input) {
 
     switch (ch) {
     case '+':
-      tok = push_token(intpr);
-      tok->v = "+";
-      tok->type = PLUS;
+      tok = push_token(intpr, PLUS);
       break;
     case '=':
-      tok = push_token(intpr);
       if (peek_char(input, i) == '=') {
         i++;
-        tok->v = "==";
-        tok->type = EQUAL;
+        tok = push_token(intpr, EQUAL);
       } else {
-        tok->v = "=";
-        tok->type = ASSIGN;
+        tok = push_token(intpr, ASSIGN);
       }
       break;
     case ';':
-      tok = push_token(intpr);
-      tok->v = ";";
-      tok->type = SEMICOLON;
+      tok = push_token(intpr, SEMICOLON);
       break;
     case '{':
-      tok = push_token(intpr);
-      tok->v = "{";
-      tok->type = LBRACE;
+      tok = push_token(intpr, LBRACE);
       break;
     case '}':
-      tok = push_token(intpr);
-      tok->v = "}";
-      tok->type = RBRACE;
+      tok = push_token(intpr, RBRACE);
       break;
     case '(':
-      tok = push_token(intpr);
-      tok->v = "(";
-      tok->type = LPAREN;
+      tok = push_token(intpr, LPAREN);
       break;
     case ')':
-      tok = push_token(intpr);
-      tok->v = ")";
-      tok->type = RPAREN;
+      tok = push_token(intpr, RPAREN);
       break;
     case ',':
-      tok = push_token(intpr);
-      tok->v = ",";
-      tok->type = COMMA;
+      tok = push_token(intpr, COMMA);
       break;
     case '-':
-      tok = push_token(intpr);
-      tok->v = "-";
-      tok->type = MINUS;
+      tok = push_token(intpr, MINUS);
       break;
     case '!':
-      tok = push_token(intpr);
       if (peek_char(input, i) == '=') {
         i++;
-        tok->v = "!=";
-        tok->type = NOT_EQUAL;
+        tok = push_token(intpr, NOT_EQUAL);
       } else {
-        tok->v = "!";
-        tok->type = BANG;
+        tok = push_token(intpr, BANG);
       }
       break;
     case '/':
-      tok = push_token(intpr);
-      tok->v = "/";
-      tok->type = SLASH;
+      tok = push_token(intpr, SLASH);
       break;
     case '*':
-      tok = push_token(intpr);
-      tok->v = "*";
-      tok->type = ASTERISK;
+      tok = push_token(intpr, ASTERISK);
       break;
     case '<':
-      tok = push_token(intpr);
-      tok->v = "<";
-      tok->type = LT;
+      tok = push_token(intpr, LT);
       break;
     case '>':
-      tok = push_token(intpr);
-      tok->v = ">";
-      tok->type = GT;
+      tok = push_token(intpr, GT);
       break;
     default:
       if (isalpha(ch)) {
@@ -337,7 +303,7 @@ void tokenize(Interpreter *intpr, char *input) {
         i = read_number(intpr, input, i);
         tok = &intpr->token_buf[intpr->token_count - 1];
       } else {
-        tok = push_token(intpr);
+        tok = new_token(intpr);
         static char illegal_buf[2];
         illegal_buf[0] = ch;
         illegal_buf[1] = '\0';
@@ -370,7 +336,12 @@ char *read_file(const char *path) {
     return NULL;
   }
 
-  char *buf = arena_alloc((size_t)size + 1);
+  char *buf = arena_alloc(&arena, (size_t)size + 1, 1);
+  if (!buf) {
+    fclose(f);
+    fprintf(stderr, "error: out of memory\n");
+    return NULL;
+  }
   size_t read = fread(buf, 1, (size_t)size, f);
   buf[read] = '\0';
   fclose(f);
@@ -379,6 +350,10 @@ char *read_file(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
+  if (!arena_init(&arena, MiB(1))) {
+    fprintf(stderr, "error: failed to initialize arena\n");
+    return EXIT_FAILURE;
+  }
 
   if (argc > 2) {
     fprintf(stderr, "error: too many arguments\n");
@@ -394,7 +369,7 @@ int main(int argc, char *argv[]) {
 
   if (strcmp(argv[1], "repl") == 0) {
     char line[1024];
-    Token *tokens = arena_alloc(sizeof(Token) * MAX_TOKENS);
+    Token *tokens = arena_new_array(&arena, Token, MAX_TOKENS);
     Interpreter intpr = {.token_buf = tokens, .token_count = 0};
 
     printf(">>> ");
@@ -423,7 +398,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  Token *tokens = arena_alloc(sizeof(Token) * MAX_TOKENS);
+  Token *tokens = arena_new_array(&arena, Token, MAX_TOKENS);
   Interpreter intpr = {.token_buf = tokens, .token_count = 0};
   tokenize(&intpr, source);
 
