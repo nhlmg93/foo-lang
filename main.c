@@ -1,4 +1,4 @@
-#define ARENA_IMPLEMENTATION
+#define STB_DS_IMPLEMENTATION
 #include <assert.h>
 #include <ctype.h>
 #include <stdalign.h>
@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "vendor/arena.h"
+#include "vendor/stb_ds.h"
 
 #define TOKEN_TABLE                                                            \
   X(ILLEGAL, "ILLEGAL")                                                        \
@@ -94,11 +94,9 @@ struct Expr {
   int placeholder;
 };
 
-// Flat Interpreter struct (everything in one place)
 typedef struct Interpreter {
   // Tokenizer
   Token *token_buf;
-  int token_count;
 
   // Parser
   int pos;
@@ -121,15 +119,7 @@ void print_usage(const char *prog) {
   fprintf(stderr, "  repl    start interactive read-eval-print loop\n");
 }
 
-/* ----------------------------------------------------------------------------
- * Arena Allocator
- * ----------------------------------------------------------------------------
- */
-
-#define MAX_TOKENS (32 * 1024) // 32k tokens ~512KB
-#define MAX_STMTS (4 * 1024)   // 4k statements
-
-static Arena arena;
+static stbds_string_arena string_arena = {0};
 
 /* ----------------------------------------------------------------------------
  * Keywords
@@ -141,18 +131,25 @@ typedef struct {
   TokenType value;
 } KeywordEntry;
 
-static const KeywordEntry KEYWORDS[] = {
-    {"fn", FUNCTION}, {"let", LET},   {"true", TRUE},     {"false", FALSE},
-    {"if", IF},       {"else", ELSE}, {"return", RETURN},
-};
+static KeywordEntry *keyword_map = NULL;
+
+static void keyword_map_init(void) {
+  if (keyword_map)
+    return;
+
+  static const KeywordEntry KEYWORDS[] = {
+      {"fn", FUNCTION}, {"let", LET},   {"true", TRUE},     {"false", FALSE},
+      {"if", IF},       {"else", ELSE}, {"return", RETURN},
+  };
+
+  shdefault(keyword_map, IDENT);
+  for (size_t i = 0; i < sizeof(KEYWORDS) / sizeof(KEYWORDS[0]); i++)
+    shput(keyword_map, KEYWORDS[i].key, KEYWORDS[i].value);
+}
 
 TokenType keyword_lookup(const char *key) {
-  for (size_t i = 0; i < sizeof(KEYWORDS) / sizeof(KEYWORDS[0]); i++) {
-    if (strcmp(KEYWORDS[i].key, key) == 0) {
-      return KEYWORDS[i].value;
-    }
-  }
-  return IDENT;
+  keyword_map_init();
+  return shget(keyword_map, key);
 }
 
 /* ----------------------------------------------------------------------------
@@ -180,8 +177,9 @@ FORMAT_PRINTF(1, 2) void debug(const char *fmt, ...) {
  */
 
 static Token *new_token(Interpreter *intpr) {
-  assert(intpr->token_count < MAX_TOKENS && "too many tokens");
-  return &intpr->token_buf[intpr->token_count++];
+  Token tok = {0};
+  arrput(intpr->token_buf, tok);
+  return &intpr->token_buf[arrlen(intpr->token_buf) - 1];
 }
 
 int read_ident(Interpreter *intpr, char *input, int pos) {
@@ -190,10 +188,11 @@ int read_ident(Interpreter *intpr, char *input, int pos) {
     pos++;
 
   int len = pos - start;
-  char *ident = arena_alloc(&arena, len + 1, 1);
+  char buf[len + 1];
+  memcpy(buf, &input[start], len);
+  buf[len] = '\0';
+  char *ident = stralloc(&string_arena, buf);
   assert(ident && "out of memory");
-  memcpy(ident, &input[start], len);
-  ident[len] = '\0';
 
   Token *tok = new_token(intpr);
   tok->v = ident;
@@ -208,10 +207,11 @@ int read_number(Interpreter *intpr, char *input, int pos) {
     pos++;
 
   int len = pos - start;
-  char *num = arena_alloc(&arena, len + 1, 1);
+  char buf[len + 1];
+  memcpy(buf, &input[start], len);
+  buf[len] = '\0';
+  char *num = stralloc(&string_arena, buf);
   assert(num && "out of memory");
-  memcpy(num, &input[start], len);
-  num[len] = '\0';
 
   Token *tok = new_token(intpr);
   tok->v = num;
@@ -298,10 +298,10 @@ void tokenize(Interpreter *intpr, char *input) {
     default:
       if (isalpha(ch)) {
         i = read_ident(intpr, input, i);
-        tok = &intpr->token_buf[intpr->token_count - 1];
+        tok = &intpr->token_buf[arrlen(intpr->token_buf) - 1];
       } else if (isdigit(ch)) {
         i = read_number(intpr, input, i);
-        tok = &intpr->token_buf[intpr->token_count - 1];
+        tok = &intpr->token_buf[arrlen(intpr->token_buf) - 1];
       } else {
         tok = new_token(intpr);
         static char illegal_buf[2];
@@ -336,7 +336,7 @@ char *read_file(const char *path) {
     return NULL;
   }
 
-  char *buf = arena_alloc(&arena, (size_t)size + 1, 1);
+  char *buf = malloc((size_t)size + 1);
   if (!buf) {
     fclose(f);
     fprintf(stderr, "error: out of memory\n");
@@ -350,11 +350,6 @@ char *read_file(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
-  if (!arena_init(&arena, MiB(1))) {
-    fprintf(stderr, "error: failed to initialize arena\n");
-    return EXIT_FAILURE;
-  }
-
   if (argc > 2) {
     fprintf(stderr, "error: too many arguments\n");
     print_usage(argv[0]);
@@ -369,12 +364,13 @@ int main(int argc, char *argv[]) {
 
   if (strcmp(argv[1], "repl") == 0) {
     char line[1024];
-    Token *tokens = arena_new_array(&arena, Token, MAX_TOKENS);
-    Interpreter intpr = {.token_buf = tokens, .token_count = 0};
+    Interpreter intpr = {0};
 
     printf(">>> ");
     while (fgets(line, sizeof(line), stdin) != NULL) {
-      intpr.token_count = 0;
+      arrfree(intpr.token_buf);
+      intpr.token_buf = NULL;
+      strreset(&string_arena);
 
       size_t len = strlen(line);
       if (len > 0 && line[len - 1] == '\n') {
@@ -385,6 +381,8 @@ int main(int argc, char *argv[]) {
 
       printf(">>> ");
     }
+    arrfree(intpr.token_buf);
+    strreset(&string_arena);
     return EXIT_SUCCESS;
   }
 
@@ -398,9 +396,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  Token *tokens = arena_new_array(&arena, Token, MAX_TOKENS);
-  Interpreter intpr = {.token_buf = tokens, .token_count = 0};
+  Interpreter intpr = {0};
   tokenize(&intpr, source);
-
   return EXIT_SUCCESS;
 }
