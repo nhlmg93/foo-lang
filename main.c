@@ -381,8 +381,6 @@ int main(int argc, char *argv[]) {
 
       printf(">>> ");
     }
-    arrfree(intpr.token_buf);
-    strreset(&string_arena);
     return EXIT_SUCCESS;
   }
 
