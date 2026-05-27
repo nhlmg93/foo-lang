@@ -75,19 +75,8 @@ typedef struct Stmt {
       const char *name;
       Expr *value;
     } let; // let x = 5;
-    struct {
-      Expr *value;
-    } ret; // return 5;
-    struct {
-      Expr *expr;
-    } expr_stmt; // 5 + 5;
   } data;
 } Stmt;
-
-typedef struct Program {
-  Stmt *stmts;
-  int count;
-} Program;
 
 // Minimal expression (placeholder)
 struct Expr {
@@ -95,7 +84,7 @@ struct Expr {
 };
 
 typedef struct Interpreter {
-  // Tokenizer
+  // Lexer
   Token *token_buf;
 
   // Parser
@@ -319,6 +308,42 @@ void tokenize(Interpreter *intpr, char *input) {
   }
 }
 
+static void parser_advance(Interpreter *intpr) {
+  intpr->curr = intpr->next;
+  intpr->pos++;
+  if (intpr->pos < arrlen(intpr->token_buf))
+    intpr->next = intpr->token_buf[intpr->pos];
+  else
+    intpr->next = (Token){END, "EOF"};
+}
+
+void parse(Interpreter *intpr) {
+  // Empty input
+  if (arrlen(intpr->token_buf) == 0) {
+    intpr->pos = 0;
+    intpr->curr = (Token){END, "EOF"};
+    intpr->next = (Token){END, "EOF"};
+    return;
+  }
+  intpr->pos = 0;
+  intpr->curr = intpr->token_buf[0];
+  intpr->next = (arrlen(intpr->token_buf) > 1) ? intpr->token_buf[1]
+                                               : (Token){END, "EOF"};
+  while (intpr->curr.type != END) {
+    debug("curr = %s (%s)\n",
+          token_type_to_str(intpr->curr.type), intpr->curr.v);
+    switch (intpr->curr.type) {
+    case LET:
+      // parse let statement;
+      parser_advance(intpr);
+      break;
+    default:
+      parser_advance(intpr);
+      break;
+    }
+  }
+}
+
 char *read_file(const char *path) {
   FILE *f = fopen(path, "r");
   if (!f) {
@@ -396,5 +421,6 @@ int main(int argc, char *argv[]) {
 
   Interpreter intpr = {0};
   tokenize(&intpr, source);
+  parse(&intpr);
   return EXIT_SUCCESS;
 }
