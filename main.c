@@ -102,12 +102,6 @@ typedef struct Interpreter {
  * ============================================================================
  */
 
-void print_usage(const char *prog) {
-  fprintf(stderr, "usage: %s [file | repl]\n", prog);
-  fprintf(stderr, "  file    tokenize the specified file\n");
-  fprintf(stderr, "  repl    start interactive read-eval-print loop\n");
-}
-
 static stbds_string_arena string_arena = {0};
 
 /* ----------------------------------------------------------------------------
@@ -311,8 +305,8 @@ void tokenize(Interpreter *intpr, char *input) {
 static void parser_advance(Interpreter *intpr) {
   intpr->curr = intpr->next;
   intpr->pos++;
-  if (intpr->pos < arrlen(intpr->token_buf))
-    intpr->next = intpr->token_buf[intpr->pos];
+  if (intpr->pos + 1 < arrlen(intpr->token_buf))
+    intpr->next = intpr->token_buf[intpr->pos + 1];
   else
     intpr->next = (Token){END, "EOF"};
 }
@@ -377,17 +371,10 @@ char *read_file(const char *path) {
 int main(int argc, char *argv[]) {
   if (argc > 2) {
     fprintf(stderr, "error: too many arguments\n");
-    print_usage(argv[0]);
     return EXIT_FAILURE;
   }
 
   if (argc == 1) {
-    fprintf(stderr, "error: no input file specified\n");
-    print_usage(argv[0]);
-    return EXIT_FAILURE;
-  }
-
-  if (strcmp(argv[1], "repl") == 0) {
     char line[1024];
     Interpreter intpr = {0};
 
@@ -403,14 +390,10 @@ int main(int argc, char *argv[]) {
       }
 
       tokenize(&intpr, line);
+      parse(&intpr);
 
       printf(">>> ");
     }
-    return EXIT_SUCCESS;
-  }
-
-  if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-    print_usage(argv[0]);
     return EXIT_SUCCESS;
   }
 
