@@ -1,5 +1,5 @@
-#ifndef FOO_ARENA_H
-#define FOO_ARENA_H
+#ifndef FOO_LIB_ARENA_H
+#define FOO_LIB_ARENA_H
 
 #include <stdalign.h>
 #include <stddef.h>

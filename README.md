@@ -1,7 +1,8 @@
 # foo
 
-A small tree-walking interpreter written in C, based on ["Writing An
-Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball.
+A small programming language implementation written in C. Foo can execute the
+same source with either a tree-walking interpreter or a bytecode compiler and
+stack-based virtual machine.
 
 ## Building
 
@@ -13,17 +14,28 @@ make
 
 This produces the `foo` executable.
 
-## Run a file
+## Execution Modes
+
+```bash
+./foo --interpreter test.foo
+./foo --compiler test.foo
+```
+
+Interpreter mode is the default, so this is equivalent to the first command:
 
 ```bash
 ./foo test.foo
 ```
 
-Run without arguments to start the REPL:
+Omit the source file to start a persistent REPL in either mode:
 
 ```bash
-./foo
+./foo --interpreter
+./foo --compiler
 ```
+
+Compiler mode compiles to Foo bytecode in memory and immediately executes it
+with the VM. It does not emit a native executable or bytecode file.
 
 ## Language
 
@@ -45,19 +57,26 @@ Supported features:
 - functions, calls, recursion, and closures
 - persistent REPL bindings
 
-Invalid programs panic and abort. Runtime storage comes from one bounded 16 MiB
-static arena; there is no heap allocation.
+Invalid programs panic and abort. Foo-managed storage comes from one bounded
+16 MiB static arena.
 
 ## Project Structure
 
 ```
 .
-├── arena.c         # STB-style static arena
-├── ast.c           # STB-style AST declarations and implementation
-├── lexer.c         # STB-style lexer
-├── parser.c        # STB-style Pratt parser
-├── main.c          # Evaluator, CLI, and REPL
-├── test.foo        # Example program
+├── lib/
+│   ├── arena.c                  # Shared static arena
+│   ├── ast.c                    # Shared AST
+│   ├── lexer.c                  # Shared lexer
+│   ├── parser.c                 # Shared Pratt parser
+│   ├── interpreter/
+│   │   └── evaluator.c         # Tree-walking evaluator
+│   └── compiler/
+│       ├── bytecode.c          # Opcodes and VM values
+│       ├── compiler.c          # Symbol table and AST compiler
+│       └── vm.c                # Stack-based virtual machine
+├── main.c                      # CLI, file execution, and REPL dispatch
+├── test.foo                    # Example program
 └── Makefile
 ```
 

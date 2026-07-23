@@ -1,5 +1,5 @@
-#ifndef FOO_LEXER_H
-#define FOO_LEXER_H
+#ifndef FOO_LIB_LEXER_H
+#define FOO_LIB_LEXER_H
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -1,5 +1,5 @@
-#ifndef FOO_PARSER_H
-#define FOO_PARSER_H
+#ifndef FOO_LIB_PARSER_H
+#define FOO_LIB_PARSER_H
 
 #include <stdarg.h>
 

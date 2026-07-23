@@ -1,5 +1,5 @@
-#ifndef FOO_AST_H
-#define FOO_AST_H
+#ifndef FOO_LIB_AST_H
+#define FOO_LIB_AST_H
 
 #include <stdbool.h>
 #include <stdint.h>
