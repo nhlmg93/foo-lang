@@ -1,31 +1,27 @@
-.PHONY: all run test clean vendor
+.PHONY: all run clean clean-all vendor
 
 CC = gcc
-CFLAGS = -std=c23 -Wall -Wextra -I$(VENDOR_DIR)
+CFLAGS = -std=c23 -Wall -Wextra
 TARGET = foo
 SRC = main.c
+INCLUDED_SRC = arena.c ast.c lexer.c parser.c
 VENDOR_DIR = vendor
+STB_DS_HEADER = $(VENDOR_DIR)/stb_ds.h
 STB_DS_URL = https://raw.githubusercontent.com/nothings/stb/master/stb_ds.h
 
 all: $(TARGET)
 
-vendor:
-	@if [ ! -f $(VENDOR_DIR)/stb_ds.h ]; then \
-		mkdir -p $(VENDOR_DIR); \
-		curl -L -o $(VENDOR_DIR)/stb_ds.h $(STB_DS_URL); \
-		echo "Downloaded stb_ds.h to $(VENDOR_DIR)/"; \
-	fi
+vendor: $(STB_DS_HEADER)
 
-$(TARGET): vendor $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) -I$(VENDOR_DIR)
+$(STB_DS_HEADER):
+	mkdir -p $(VENDOR_DIR)
+	curl -fL -o $(STB_DS_HEADER) $(STB_DS_URL)
+
+$(TARGET): $(SRC) $(INCLUDED_SRC) $(STB_DS_HEADER)
+	$(CC) $(CFLAGS) -I$(VENDOR_DIR) -o $(TARGET) $(SRC)
 
 run: $(TARGET)
 	./$(TARGET)
-
-test: $(TARGET)
-	@echo "Running tests..."
-	./$(TARGET) test.foo
-
 
 clean:
 	rm -f $(TARGET)

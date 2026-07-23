@@ -1,8 +1,7 @@
 # foo
 
-An interpreter for the **foo** programming language, written in C.
-
-This project is an implementation of the **foo** programming language interpreter following the book ["Writing An Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball. Instead of Go, we're using C.
+A small tree-walking interpreter written in C, based on ["Writing An
+Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball.
 
 ## Building
 
@@ -14,37 +13,58 @@ make
 
 This produces the `foo` executable.
 
-## Usage
-
-Currently the lexer can be run with:
+## Run a file
 
 ```bash
-./foo "<input_string>"
+./foo test.foo
 ```
 
-## Architecture
+Run without arguments to start the REPL:
 
-Following the interpreter book's structure:
+```bash
+./foo
+```
 
-1. **Lexer** - Converts source code into tokens
-2. **Parser** - Builds an Abstract Syntax Tree (AST) from tokens
-3. **Evaluator** - Walks the AST and executes the code
-4. **REPL** - Interactive read-eval-print loop
+## Language
+
+```foo
+let make_adder = fn(x) {
+  fn(y) { x + y; };
+};
+
+let add_two = make_adder(2);
+add_two(40);
+```
+
+Supported features:
+
+- integers and booleans
+- prefix and infix operators
+- `let` and `return` statements
+- `if`/`else` expressions
+- functions, calls, recursion, and closures
+- persistent REPL bindings
+
+Invalid programs panic and abort. Runtime storage comes from one bounded 16 MiB
+static arena; there is no heap allocation.
 
 ## Project Structure
 
 ```
 .
-├── main.c          # Lexer implementation (in progress)
-├── Makefile        # Build configuration
-├── foo             # Compiled executable
-└── README.md       # This file
+├── arena.c         # STB-style static arena
+├── ast.c           # STB-style AST declarations and implementation
+├── lexer.c         # STB-style lexer
+├── parser.c        # STB-style Pratt parser
+├── main.c          # Evaluator, CLI, and REPL
+├── test.foo        # Example program
+└── Makefile
 ```
 
 ## References
 
 - [Writing An Interpreter In Go](https://interpreterbook.com/) by Thorsten Ball
-- [Writing A Compiler In Go](https://compilerbook.com/) - Sequel to the interpreter book
+- [Writing A Compiler In Go](https://compilerbook.com/)
 
 ## License
 
